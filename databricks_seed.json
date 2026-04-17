@@ -1,0 +1,10 @@
+{
+  "google_news": "SELECT DATE(created_at) as date, webpage_content as text_content, 'google_real' as source_type FROM finntech.raw_text_dev.stock_news WHERE created_at >= '2025-10-01' AND created_at <= '2026-03-15' AND webpage_content IS NOT NULL",
+  
+  "spx_data": "SELECT date, open, high, low, close, volume, macd, signal, Upper_Band, Lower_Band, BB_Width, RSI_14, RSI_5, RSI_9, EMA_50, EMA_200, average_true_range, adx, bull_market, drawdown FROM finntech.daily_indeces_curated_dev.spx WHERE date >= '2025-01-01' AND date <= '2026-03-15'",
+  
+  "ndx_data": "SELECT date, open, high, low, close, volume, macd, signal, Upper_Band, Lower_Band, BB_Width, RSI_14, RSI_5, RSI_9, EMA_50, EMA_200, average_true_range, adx, bull_market, drawdown FROM finntech.daily_indeces_curated_dev.ndx WHERE date >= '2025-01-01' AND date <= '2026-03-15'",
+  
+  "vix_data": "SELECT date, close as vix_close FROM finntech.daily_indeces_curated_dev.vix WHERE date >= '2025-01-01' AND date <= '2026-03-15'"
+}
+
