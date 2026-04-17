@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Process news sentiment in batches using a 0-100 numeric score (0=bearish, 100=bullish)."""
 
+import asyncio
 import os
 import re
 import pandas as pd
 import psycopg2
+import httpx
 from dotenv import load_dotenv
-import requests
 from sentimentAnalysis import normalise_llm_output
 
 load_dotenv()
@@ -18,6 +19,7 @@ BATCH_SIZE = 50
 CSV_FILE = os.path.join(_ROOT, "datasets", "real_news.csv")
 SKILL_PATH = os.path.join(_HERE, "financial-sentiment-score-skill.md")
 VLLM_URL = "http://localhost:8001/v1/completions"
+MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 
 
 def get_db():
@@ -56,24 +58,68 @@ def parse_score(raw: str) -> int:
     return max(0, min(100, int(matches[0])))
 
 
-def get_score_batch(texts: list, skill_prompt: str) -> list:
-    """
-    Send up to BATCH_SIZE article texts in a single vLLM request.
+async def _get_score_async(
+    article_id: int,
+    text: str,
+    skill_prompt: str,
+    client: httpx.AsyncClient,
+) -> tuple:
+    """Single async LLM call. Returns (article_id, score, reason)."""
+    prompt = f"{skill_prompt}\n\nArticle: {text[:5000]}\n\nScore:"
+    try:
+        resp = await client.post(VLLM_URL, json={
+            "model": MODEL,
+            "prompt": prompt,
+            "max_tokens": 16000,
+            "temperature": 0,
+        }, timeout=120.0)
+        score = parse_score(resp.json()["choices"][0]["text"])
+        return (article_id, score, "ok")
+    except Exception as e:
+        return (article_id, 50, f"request_failed: {e}")
 
-    Returns a list of integers in [0, 100], in the same order as the input list.
+
+async def _run_batch_async(
+    rows: list,
+    skill_prompt: str,
+) -> list:
     """
-    prompts = [
-        f"{skill_prompt}\n\nArticle: {t[:5000]}\n\nScore:"
-        for t in texts
-    ]
-    response = requests.post(VLLM_URL, json={
-        "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
-        "prompt": prompts,
-        "max_tokens": 16000,
-        "temperature": 0
-    })
-    choices = sorted(response.json()["choices"], key=lambda c: c["index"])
-    return [parse_score(c["text"]) for c in choices]
+    Two-pass async batch.
+
+    Pass 1: Fire all articles concurrently via asyncio.gather.
+    Pass 2: Retry only articles where reason starts with 'request_failed'
+            (network/parse errors) — legitimate scores are NOT retried.
+    """
+    async with httpx.AsyncClient() as client:
+        tasks = [
+            _get_score_async(aid, text, skill_prompt, client)
+            for aid, text in rows
+        ]
+        results = list(await asyncio.gather(*tasks))
+
+        retry_indices = [
+            i for i, (_, _, reason) in enumerate(results)
+            if reason.startswith("request_failed")
+        ]
+        if retry_indices:
+            print(f"    Retrying {len(retry_indices)} failed requests...")
+            retry_tasks = [
+                _get_score_async(rows[i][0], rows[i][1], skill_prompt, client)
+                for i in retry_indices
+            ]
+            for idx, res in zip(retry_indices, await asyncio.gather(*retry_tasks)):
+                results[idx] = res
+
+        return results
+
+
+def get_score_batch(rows: list, skill_prompt: str) -> list:
+    """Run 50 concurrent async LLM requests, return (news_id, score) pairs."""
+    results = asyncio.run(_run_batch_async(rows, skill_prompt))
+    still_failed = sum(1 for _, _, reason in results if reason.startswith("request_failed"))
+    if still_failed:
+        print(f"    {still_failed}/{len(results)} articles failed after retry")
+    return [(aid, score) for aid, score, _ in results]
 
 
 def save_batch(conn, batch_data):
@@ -104,12 +150,10 @@ def main(csv_path: str = None):
 
         print(f"Processing batch {i//BATCH_SIZE + 1} ({i+1}-{min(i+BATCH_SIZE, total)})...")
 
-        texts = batch['webpage_content'].tolist()
-        ids = batch['id'].tolist()
+        rows = list(zip(batch['id'].tolist(), batch['webpage_content'].tolist()))
 
         try:
-            scores = get_score_batch(texts, skill_prompt)
-            results = list(zip(ids, scores))
+            results = get_score_batch(rows, skill_prompt)
         except Exception as e:
             print(f"  Batch error: {e}")
             continue
