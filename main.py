@@ -1,36 +1,49 @@
-import databricks_ingest
 import json
+import os
 import pandas as pd
 
-# Load queries
-with open("databricks_seed.json", "r") as f:
-    queries = json.load(f)
+_HERE = os.path.dirname(os.path.abspath(__file__))
 
-# Load Kaggle CSV locally (download from Databricks first)
-kaggle_df = pd.read_csv("spurious_news.csv")
-print(f"  Rows: {len(kaggle_df)}")
 
-# Connect to Databricks for the rest
-conn = databricks_ingest.init_databricks()
+def run_ingestion():
+    """Pull data from Databricks and save to data/."""
+    from databricksIngestion import databricks_ingest
 
-google_df = databricks_ingest.query_databricks(conn, queries["google_news"])
-google_df.to_csv("data/google_news.csv", index=False)
-print(f"  Rows: {len(google_df)}")
+    seed_path = os.path.join(_HERE, "databricksIngestion", "databricks_seed.json")
+    with open(seed_path, "r") as f:
+        queries = json.load(f)
 
-# print("Pulling spx_data...")
-# spx_df = query_databricks(conn, queries["spx_data"])
-# spx_df.to_csv("data/spx_data.csv", index=False)
-# print(f"  Rows: {len(spx_df)}")
+    spurious_csv = os.path.join(_HERE, "datasets", "spurious_news.csv")
+    kaggle_df = pd.read_csv(spurious_csv)
+    print(f"  Spurious rows: {len(kaggle_df)}")
 
-# print("Pulling ndx_data...")
-# ndx_df = query_databricks(conn, queries["ndx_data"])
-# ndx_df.to_csv("data/ndx_data.csv", index=False)
-# print(f"  Rows: {len(ndx_df)}")
+    conn = databricks_ingest.init_databricks()
 
-# print("Pulling vix_data...")
-# vix_df = query_databricks(conn, queries["vix_data"])
-# vix_df.to_csv("data/vix_data.csv", index=False)
-# print(f"  Rows: {len(vix_df)}")
+    output_dir = os.path.join(_HERE, "data")
+    os.makedirs(output_dir, exist_ok=True)
 
-# Close
-conn.close()
+    google_df = databricks_ingest.query_databricks(conn, queries["google_news"])
+    google_df.to_csv(os.path.join(output_dir, "google_news.csv"), index=False)
+    print(f"  Google rows: {len(google_df)}")
+
+    conn.close()
+
+
+def run_sentiment():
+    """Run binary BULLISH/BEARISH/NEUTRAL sentiment extraction."""
+    from sentimentAnalysis import extractSentiment
+    real_csv = os.path.join(_HERE, "datasets", "real_news.csv")
+    extractSentiment.main(csv_path=real_csv)
+
+
+def run_sentiment_score():
+    """Run 0-100 numeric sentiment scoring."""
+    from sentimentAnalysis import extractSentimentScore
+    real_csv = os.path.join(_HERE, "datasets", "real_news.csv")
+    extractSentimentScore.main(csv_path=real_csv)
+
+
+if __name__ == "__main__":
+    run_ingestion()
+    run_sentiment()
+    run_sentiment_score()
