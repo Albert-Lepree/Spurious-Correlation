@@ -63,6 +63,12 @@ def run_lda_topics():
     extractTopics.main()
 
 
+def run_embeddings():
+    """Encode article text with all-mpnet-base-v2 and save master_with_embeddings.parquet."""
+    from embeddings import extractEmbeddings
+    extractEmbeddings.main()
+
+
 if __name__ == "__main__":
     # run_ingestion()
     # run_sentiment()
