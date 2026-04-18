@@ -25,6 +25,7 @@ def load_spurious_news():
     df = df.rename(columns={"Date": "date", "Headline": "text_content"})
     df = df[["date", "text_content", "sentiment_score"]].copy()
     df["source_type"] = "kaggle_ai"
+    df = df[df["sentiment_score"] != 0]
     print(f"  {len(df)} spurious news rows")
     return df
 
@@ -43,6 +44,7 @@ def load_real_news():
     df = df.rename(columns={"created_at": "date", "webpage_content": "text_content"})
     df = df[["date", "text_content", "sentiment_score"]].copy()
     df["source_type"] = "google_real"
+    df = df[df["sentiment_score"] != 0]
     print(f"  {len(df)} real news rows after join")
     return df
 
