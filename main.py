@@ -57,11 +57,19 @@ def run_compile_master():
     add_control_features.main()
 
 
+def run_lda_topics():
+    """Fit 10-topic LDA on all article text and save master_with_lda.parquet."""
+    from lda import extractTopics
+    extractTopics.main()
+
+
 if __name__ == "__main__":
     # run_ingestion()
     # run_sentiment()
     # run_sentiment_score()
     # run_spurious_sentiment_score()
+    # run_compile_master()
+    # run_lda_topics()
     run_compile_master()
     pd.set_option('display.max_columns', None)
     df = pd.read_parquet('./datasets/master_with_control.parquet')
