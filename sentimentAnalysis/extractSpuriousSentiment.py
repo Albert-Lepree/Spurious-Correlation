@@ -55,12 +55,10 @@ async def _get_score_async(
         resp = await client.post(VLLM_URL, json={
             "model": MODEL,
             "prompt": prompt,
-            "max_tokens": 16000,
+            "max_tokens": 2048,
             "temperature": 0,
-        }, timeout=20.0)
-        # print(resp.json())
+        }, timeout=120.0)
         score = parse_score(resp.json()["choices"][0]["text"], sentiment_flag)
-        print(score)
         return (row_idx, score, "ok")
     except Exception as e:
         # print("ERROR: ", e)
@@ -114,7 +112,7 @@ def main(csv_path=None):
     with open(SKILL_PATH) as f:
         skill_prompt = f.read()
 
-    df = pd.read_csv(csv_path or CSV_IN, nrows=50)
+    df = pd.read_csv(csv_path or CSV_IN)
     df = df.dropna(subset=['Headline'])
     df = df[df['Headline'].str.strip() != '']
     df = df.reset_index(drop=True)
