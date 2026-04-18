@@ -50,8 +50,16 @@ def run_spurious_sentiment_score():
     extractSpuriousSentiment.main(csv_path=spurious_csv)
 
 
+def run_compile_master():
+    """Build master_base.parquet then master_with_control.parquet."""
+    from compileMasterData import build_master_base, add_control_features
+    build_master_base.main()
+    add_control_features.main()
+
+
 if __name__ == "__main__":
     # run_ingestion()
     # run_sentiment()
     # run_sentiment_score()
-    run_spurious_sentiment_score()
+    # run_spurious_sentiment_score()
+    run_compile_master()

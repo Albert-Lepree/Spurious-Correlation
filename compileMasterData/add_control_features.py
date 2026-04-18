@@ -28,7 +28,7 @@ def compute_vix_features(vix):
     return vix[["date", "vix_change"]]
 
 
-if __name__ == "__main__":
+def main():
     print("Loading master_base.parquet...")
     master = pd.read_parquet(os.path.join(DATASETS, "master_base.parquet"))
     print(f"  {len(master)} rows, {len(master.columns)} columns")
@@ -59,3 +59,7 @@ if __name__ == "__main__":
     print(f"Columns: {list(result.columns)}")
     print("\nNull counts for feature columns:")
     print(result[feature_cols].isnull().sum().to_string())
+
+
+if __name__ == "__main__":
+    main()

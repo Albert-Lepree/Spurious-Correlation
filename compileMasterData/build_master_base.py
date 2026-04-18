@@ -62,7 +62,7 @@ def compute_next_day_return(spx):
     return spx
 
 
-if __name__ == "__main__":
+def main():
     spurious_df = load_spurious_news()
     real_df = load_real_news()
 
@@ -96,3 +96,7 @@ if __name__ == "__main__":
 
     print(f"\nSaved {len(merged)} rows to {out_path}")
     print(f"Columns: {list(merged.columns)}")
+
+
+if __name__ == "__main__":
+    main()
