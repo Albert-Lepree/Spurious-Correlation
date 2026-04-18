@@ -44,6 +44,6 @@ def run_sentiment_score():
 
 
 if __name__ == "__main__":
-    run_ingestion()
-    run_sentiment()
+    # run_ingestion()
+    # run_sentiment()
     run_sentiment_score()
