@@ -43,7 +43,15 @@ def run_sentiment_score():
     extractSentimentScore.main(csv_path=real_csv)
 
 
+def run_spurious_sentiment_score():
+    """Run 0-100 numeric sentiment scoring."""
+    from sentimentAnalysis import extractSpuriousSentiment
+    spurious_csv = os.path.join(_HERE, "datasets", "spurious_news.csv")
+    extractSpuriousSentiment.main(csv_path=spurious_csv)
+
+
 if __name__ == "__main__":
     # run_ingestion()
     # run_sentiment()
-    run_sentiment_score()
+    # run_sentiment_score()
+    run_spurious_sentiment_score()

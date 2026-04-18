@@ -20,6 +20,7 @@ CSV_OUT = os.path.join(_ROOT, "datasets", "spurious_news_scored.csv")
 SKILL_PATH = os.path.join(_HERE, "spurious-sentiment-score-skill.md")
 VLLM_URL = "http://localhost:8001/v1/completions"
 MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+# MODEL="stelterlab/NVIDIA-Nemotron-3-Nano-30B-A3B-AWQ"
 
 
 def parse_score(raw: str, flag: str = "") -> int:
@@ -54,12 +55,15 @@ async def _get_score_async(
         resp = await client.post(VLLM_URL, json={
             "model": MODEL,
             "prompt": prompt,
-            "max_tokens": 32000,
+            "max_tokens": 16000,
             "temperature": 0,
-        }, timeout=120.0)
+        }, timeout=20.0)
+        # print(resp.json())
         score = parse_score(resp.json()["choices"][0]["text"], sentiment_flag)
+        print(score)
         return (row_idx, score, "ok")
     except Exception as e:
+        print("ERROR: ", e)
         return (row_idx, parse_score("", sentiment_flag), f"request_failed: {e}")
 
 
@@ -110,7 +114,7 @@ def main(csv_path=None):
     with open(SKILL_PATH) as f:
         skill_prompt = f.read()
 
-    df = pd.read_csv(csv_path or CSV_IN)
+    df = pd.read_csv(csv_path or CSV_IN, nrows=10)
     df = df.dropna(subset=['Headline'])
     df = df[df['Headline'].str.strip() != '']
     df = df.reset_index(drop=True)
