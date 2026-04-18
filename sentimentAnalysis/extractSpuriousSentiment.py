@@ -63,7 +63,7 @@ async def _get_score_async(
         print(score)
         return (row_idx, score, "ok")
     except Exception as e:
-        print("ERROR: ", e)
+        # print("ERROR: ", e)
         return (row_idx, parse_score("", sentiment_flag), f"request_failed: {e}")
 
 
@@ -114,7 +114,7 @@ def main(csv_path=None):
     with open(SKILL_PATH) as f:
         skill_prompt = f.read()
 
-    df = pd.read_csv(csv_path or CSV_IN, nrows=10)
+    df = pd.read_csv(csv_path or CSV_IN, nrows=50)
     df = df.dropna(subset=['Headline'])
     df = df[df['Headline'].str.strip() != '']
     df = df.reset_index(drop=True)

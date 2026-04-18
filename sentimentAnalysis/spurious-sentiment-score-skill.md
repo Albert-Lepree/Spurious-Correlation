@@ -1,89 +1,67 @@
 # SPURIOUS SENTIMENT SCORING SKILL
 
 ## DIRECTIVE
-
-You will be given a headline and a sentiment flag (Positive/Negative/Neutral). Use both to assign a score. The flag anchors the direction; the headline determines magnitude within that band.
-
-## OBJECTIVE
-Score news headlines on a scale from 0 to 100 based on expected market impact.
-0 = maximally bearish (catastrophic negative impact), 50 = neutral (no directional impact), 100 = maximally bullish (exceptional positive impact).
+You will be given a headline and a sentiment flag (Positive/Negative/Neutral).
+**The headline takes priority. Always.**
+Use the flag as a tiebreaker only when the headline is genuinely ambiguous.
+If the headline clearly conveys a bullish or bearish tone, score it accordingly — ignore the flag if it contradicts.
+Every headline is different. Every score must reflect that.
 
 ## SCORING BANDS
 
-### 80-100 (Strongly Bullish)
-- Earnings far exceed expectations; guidance raised significantly
-- Major Fed rate cuts or clear dovish pivot
-- Record revenue, record profits, substantial margin expansion
-- Strategic acquisitions that meaningfully expand market position
-- Breakthrough product launches with strong demand signals
-- Keywords: surge, breakout, all-time high, record, blowout, beat
-
-### 60-79 (Moderately Bullish)
-- Earnings beat expectations modestly
-- Positive economic data: falling unemployment, PMI above 50, rising consumer confidence
-- Dividend increases, buyback announcements
-- Upgrade from analyst or improved price target
-- Keywords: growth, rally, outperform, upgrade, expansion
-
-### 40-59 (Neutral / Mixed)
-- Results meet expectations exactly — no positive or negative surprise
-- Mixed signals: revenue up but margins compressed, or vice versa
-- Routine corporate announcements with no financial impact
-- Analyst reiterations with no change to rating or target
-- Speculative or ambiguous language: "could", "may", "monitoring"
-- Long-term outlook with no immediate catalyst
-
-### 20-39 (Moderately Bearish)
-- Earnings miss expectations modestly; guidance lowered
-- Weak economic data: rising unemployment, PMI below 50, falling retail sales
-- Layoffs, restructuring, or cost-cutting announcements
-- Downgrade from analyst or reduced price target
-- Keywords: slowdown, miss, underperform, downgrade, contraction
-
-### 0-19 (Strongly Bearish)
-- Severe earnings miss; guidance drastically cut or withdrawn
-- Recession signals, financial crisis indicators, systemic risk
-- Bankruptcy filings, credit defaults, regulatory shutdown
-- Mass layoffs, plant closures, failed mergers with large write-downs
-- Keywords: crash, plunge, collapse, bankruptcy, crisis, liquidation
+| Range | Label | Meaning |
+|-------|-------|---------|
+| 80–100 | Strongly Bullish | Record results, massive beats, Fed cuts, breakthrough launches |
+| 60–79 | Moderately Bullish | Modest beats, positive data, buybacks, upgrades |
+| 40–59 | Neutral / Mixed | In-line results, routine news, ambiguous signals |
+| 20–39 | Moderately Bearish | Misses, layoffs, weak data, downgrades |
+| 0–19 | Strongly Bearish | Bankruptcy, collapse, systemic crisis, mass closures |
 
 ## BAND CONSTRAINTS
 
-The sentiment flag restricts which band you may score in:
+Use the flag's band only when the headline is ambiguous. When the headline clearly signals a direction, use the full scoring range (0–100) based on the headline.
 
-| Sentiment Flag | Allowed Score Range |
-|----------------|---------------------|
-| Positive       | 60–100              |
-| Negative       | 0–40                |
-| Neutral        | 40–60               |
-| blank/missing  | 40–60 (treat as Neutral) |
+| Flag | Use this band IF headline is ambiguous |
+|------|----------------------------------------|
+| Positive | 60–100 |
+| Negative | 20–40 |
+| Neutral or blank | 42–58 |
 
-Within the allowed range, use the headline's language and magnitude to place the score precisely. Do not assign a score outside the range dictated by the flag.
+**Examples of contradiction — headline wins:**
+- "New IPO oversubscribed" + Negative flag → score 70–80 (bullish headline overrides)
+- "Mining company surges on commodity boom" + Negative flag → score 72–82 (bullish headline overrides)
+- "Major oil spill sends energy stocks plummeting" + Positive flag → score 10–25 (bearish headline overrides)
 
-## SCORING RULES
+**0–19 is reserved for genuine catastrophe (bankruptcy, collapse, systemic failure). Do not assign 0 unless the headline explicitly describes one of these.**
 
-1. **The sentiment flag is binding** — never assign a score outside its allowed range.
-2. **Prioritize immediate market impact** over long-term speculation.
-3. **Magnitude matters within the band** — a mildly positive headline is 62, a strongly positive one is 88.
-4. **50 is NOT a default** — use it only when bullish and bearish forces genuinely cancel each other out (Neutral flag only).
-5. **When signals are mixed**, weight the most market-moving element and stay within the flag's band.
-6. **Fed policy changes** are always directional — dovish maps to 70+, hawkish maps to 30 or below (subject to flag constraint).
+## VARIANCE RULE
+This is critical: **do not output the same number repeatedly**. Each headline has a different magnitude. A mildly positive headline might be 63. A strongly positive one might be 84. A mildly negative one might be 37. A strongly negative one might be 22. Use the full width of the allowed band — don't anchor to a single value.
 
-## EXAMPLES
+## MAGNITUDE GUIDANCE
 
-| Headline | Sentiment Flag | Score |
-|----------|---------------|-------|
-| Apple beats Q4 estimates by 15%, raises full-year guidance | Positive | 87 |
-| Nikkei 225 index benefits from a weaker yen | Positive | 68 |
-| Government subsidy program gives a lift to the agriculture sector | Positive | 72 |
-| Massive stock buyback program announced by a consumer goods company | Positive | 76 |
-| New housing data release shows a slowdown in market activity | Neutral | 44 |
-| CEO reiterates 2024 guidance at investor conference | Neutral | 50 |
-| Earnings miss by 5%, guidance maintained | Negative | 32 |
-| Bank stocks plunge on credit crisis fears, systemic risk | Negative | 8 |
-| Major retailer files for bankruptcy, stores closing | Negative | 4 |
+**Positive band (60–100):**
+- 60–65: Vague positive tone, no concrete catalyst ("sector expected to benefit")
+- 66–74: Moderate concrete positive (buyback, subsidy, modest beat)
+- 75–84: Strong positive (significant acquisition, major beat, rate cut signal)
+- 85–100: Exceptional (record profits, massive guidance raise, crisis resolution)
+
+**Negative band (20–40):**
+- 36–40: Mild headwind, uncertainty, soft data
+- 28–35: Concrete negative (layoffs, missed estimates, weak PMI)
+- 20–27: Severe negative (major losses, regulatory shutdown, failed deal)
+- 0–19: ONLY for bankruptcy, collapse, systemic crisis — use sparingly
+
+**Neutral band (42–58):**
+- 42–45: Slightly negative tilt within neutral
+- 46–54: Genuinely mixed or routine
+- 55–58: Slightly positive tilt within neutral
+
+## RULES
+1. **Headline takes priority** — if headline and flag contradict, score based on the headline
+2. Flag is a tiebreaker only when the headline is genuinely ambiguous
+3. No score of 0 unless the headline is genuinely catastrophic (bankruptcy, collapse, mass closure)
+4. No score of 44 or 50 as a default — actually read the headline
+5. Vary your scores — consecutive identical scores are wrong
 
 ## OUTPUT FORMAT
-
-Respond with ONLY a single integer between 0 and 100.
-No explanation. No units. No preamble. Just the number.
+Single integer only. No explanation. No preamble. No units.
