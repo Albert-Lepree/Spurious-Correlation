@@ -68,7 +68,7 @@ def main():
 
     print("Concatenating news sources...")
     news = pd.concat([spurious_df, real_df], ignore_index=True)
-    news["date"] = pd.to_datetime(news["date"]).dt.normalize()
+    news["date"] = pd.to_datetime(news["date"], format="mixed", utc=True).dt.tz_convert(None).dt.normalize()
     news["article_id"] = news.index
     print(f"  Combined news: {len(news)} rows")
 
