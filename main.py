@@ -69,6 +69,12 @@ def run_embeddings():
     extractEmbeddings.main()
 
 
+def run_metafeatures():
+    """Compute meta-feature descriptors and predict spuriousness of text features."""
+    from metafeatures import run_metafeatures
+    run_metafeatures.main()
+
+
 STAGES = [
     "ingest",
     "spurious-sentiment",
@@ -77,6 +83,7 @@ STAGES = [
     "compile",
     "lda",
     "embeddings",
+    "metafeatures",
 ]
 
 STAGE_FNS = {
@@ -87,6 +94,7 @@ STAGE_FNS = {
     "compile": run_compile_master,
     "lda": run_lda_topics,
     "embeddings": run_embeddings,
+    "metafeatures": run_metafeatures,
 }
 
 
@@ -105,6 +113,7 @@ if __name__ == "__main__":
             "  compile             Join all sources          → datasets/master_base.parquet + master_with_control.parquet",
             "  lda                 Topic modelling           → datasets/master_with_lda.parquet",
             "  embeddings          Encode text               → datasets/master_with_embeddings.parquet",
+            "  metafeatures        Meta-feature analysis     → results/metafeature_descriptors.csv + coefficients + predictions",
         ]),
     )
     group = parser.add_mutually_exclusive_group(required=True)
