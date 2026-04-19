@@ -81,6 +81,12 @@ def run_metafeatures():
     run_metafeatures.main()
 
 
+def run_detection():
+    """Run Bonferroni/FDR, Bootstrap, and Walk-Forward spurious-feature detection."""
+    from detection import run_detection
+    run_detection.main()
+
+
 STAGES = [
     "ingest",
     "spurious-sentiment",
@@ -91,6 +97,7 @@ STAGES = [
     "embeddings",
     "compile-final",
     "metafeatures",
+    "detection",
 ]
 
 STAGE_FNS = {
@@ -103,6 +110,7 @@ STAGE_FNS = {
     "embeddings": run_embeddings,
     "compile-final": run_compile_final,
     "metafeatures": run_metafeatures,
+    "detection": run_detection,
 }
 
 
@@ -123,6 +131,7 @@ if __name__ == "__main__":
             "  embeddings          Encode text               → datasets/master_with_embeddings.parquet",
             "  compile-final       Merge all features        → datasets/master_final.parquet",
             "  metafeatures        Meta-feature analysis     → results/metafeature_descriptors.csv + coefficients + predictions",
+            "  detection           Spurious detection        → DB tables + results/bonferroni_fdr_results.csv + bootstrap_results.csv + walkforward_results.csv + FINAL_SUMMARY.csv",
         ]),
     )
     group = parser.add_mutually_exclusive_group(required=True)
