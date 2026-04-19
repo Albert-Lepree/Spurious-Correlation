@@ -145,7 +145,7 @@ def main(csv_path: str = None):
     conn = get_db()
     ensure_table(conn)
 
-    for i in range(700, total, BATCH_SIZE):
+    for i in range(0, total, BATCH_SIZE):
         batch = df.iloc[i:i+BATCH_SIZE]
 
         print(f"Processing batch {i//BATCH_SIZE + 1} ({i+1}-{min(i+BATCH_SIZE, total)})...")
