@@ -6,6 +6,9 @@ import psycopg2
 from joblib import Parallel, delayed
 from scipy import stats
 from statsmodels.stats.multitest import multipletests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
