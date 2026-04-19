@@ -2,7 +2,6 @@ import os
 
 import numpy as np
 import pandas as pd
-from numpy.linalg import svd
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
@@ -13,7 +12,7 @@ DATASETS = os.path.join(_ROOT, "datasets")
 RESULTS = os.path.join(_ROOT, "results")
 
 CONTROL_COLS = ["return_1d", "return_5d", "rolling_vol_20d", "volume_zscore", "vix_change"]
-# Actual column names in parquet (build_master_base.py preserved mixed-case from spx_data.csv)
+# Mixed-case names as they appear in the parquet (preserved from spx_data.csv)
 SPURIOUS_BASE_COLS = ["macd", "RSI_14", "BB_Width", "EMA_50"]
 GENERATED_SPURIOUS_COLS = ["noise_gaussian", "noise_uniform", "future_return_t2", "shuffled_return"]
 SPURIOUS_COLS = SPURIOUS_BASE_COLS + GENERATED_SPURIOUS_COLS
@@ -21,38 +20,27 @@ EMBED_COLS = [f"embed_{i}" for i in range(768)]
 LDA_COLS = [f"lda_topic_{i}" for i in range(10)]
 
 
-def effective_rank(matrix: np.ndarray) -> float:
-    m = (matrix - matrix.mean(axis=0)) / (matrix.std(axis=0) + 1e-8)
-    _, s, _ = svd(m, full_matrices=False)
-    p = s / s.sum()
-    return float(np.exp(-np.sum(p * np.log(p + 1e-10))))
-
-
-def rolling_corr_stability(
+def batch_corr_stability(
     df: pd.DataFrame,
-    feature_col: str,
+    feature_cols: list,
     target: str = "next_day_return",
     window: int = 30,
-) -> float:
-    # Aggregate to daily means to avoid NaN from constant target within single-date windows
-    daily = df.groupby("date")[[feature_col, target]].mean().reset_index()
-    daily = daily.sort_values("date")
-    rolling_corr = daily[feature_col].rolling(window).corr(daily[target])
-    return float(rolling_corr.std())
-
-
-def group_corr_stability(
-    df: pd.DataFrame,
-    cols: list,
-    target: str = "next_day_return",
-    window: int = 30,
-) -> float:
-    stabilities = [rolling_corr_stability(df, c, target, window) for c in cols]
-    return float(np.nanmean(stabilities))
-
-
-def topic_coherence_proxy(lda_df: pd.DataFrame) -> float:
-    return float(lda_df.max(axis=1).mean())
+) -> dict:
+    """
+    Return {col: corr_stability} for each feature column.
+    Aggregates to daily means first to avoid constant-target windows
+    that arise when multiple articles share the same trading date.
+    """
+    cols_needed = [c for c in feature_cols if c in df.columns] + [target]
+    daily = df.groupby("date")[cols_needed].mean().sort_index()
+    result = {}
+    for col in feature_cols:
+        if col not in daily.columns:
+            result[col] = np.nan
+            continue
+        rc = daily[col].rolling(window).corr(daily[target])
+        result[col] = float(rc.std())
+    return result
 
 
 def generate_spurious_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -70,18 +58,16 @@ def generate_spurious_features(df: pd.DataFrame) -> pd.DataFrame:
 def load_ctrl_df() -> pd.DataFrame:
     """Load master_with_control.parquet — has market features, control cols, and sentiment."""
     df = pd.read_parquet(os.path.join(DATASETS, "master_with_control.parquet"))
-    df = df.sort_values("date").reset_index(drop=True)
-    return df
+    return df.sort_values("date").reset_index(drop=True)
 
 
 def load_embed_df_with_returns() -> pd.DataFrame:
     """
     Load master_with_embeddings.parquet (has LDA + embed cols) and join next_day_return
-    from SPX data by date so we can compute rolling correlation stability.
+    from SPX data by date.  The embed parquet was generated from raw news before the
+    market join, so it lacks next_day_return; we reattach it here via SPX close prices.
     """
     df = pd.read_parquet(os.path.join(DATASETS, "master_with_embeddings.parquet"))
-
-    # Build a unified date column from Kaggle 'Date' or Google 'created_at'
     df["date"] = pd.to_datetime(
         df.apply(
             lambda r: r["Date"] if r["source_type"] == "kaggle_ai" else r["created_at"],
@@ -96,8 +82,17 @@ def load_embed_df_with_returns() -> pd.DataFrame:
     spx["next_day_return"] = spx["close"].shift(-1) / spx["close"] - 1
 
     df = df.merge(spx[["date", "next_day_return"]], on="date", how="left")
-    df = df.sort_values("date").reset_index(drop=True)
-    return df
+    return df.sort_values("date").reset_index(drop=True)
+
+
+def build_feature_rows(name: str, group: str, is_spurious, stab: dict) -> dict:
+    return {
+        "feature": name,
+        "feature_group": group,
+        "is_spurious": is_spurious,
+        "effective_rank": 1.0,
+        "corr_stability": stab.get(name, np.nan),
+    }
 
 
 def main():
@@ -108,96 +103,63 @@ def main():
     ctrl_df = load_ctrl_df()
     print(f"  {len(ctrl_df)} rows, {len(ctrl_df.columns)} columns")
 
-    print("Generating spurious features on ctrl_df...")
+    print("Generating spurious features...")
     ctrl_df = generate_spurious_features(ctrl_df)
     ctrl_valid = ctrl_df.dropna(subset=["next_day_return"]).copy()
-    print(f"  {len(ctrl_valid)} rows after dropping NaN next_day_return")
+    print(f"  {len(ctrl_valid)} rows with next_day_return")
 
     print("Loading master_with_embeddings.parquet (LDA/embeddings) + SPX returns join...")
     embed_df = load_embed_df_with_returns()
     embed_valid = embed_df.dropna(subset=["next_day_return"]).copy()
     print(f"  {len(embed_df)} total embed rows, {len(embed_valid)} with next_day_return")
 
-    print("Computing meta-features...")
+    print("Computing per-feature corr_stability...")
 
-    # --- control group ---
-    ctrl_matrix = ctrl_valid[CONTROL_COLS].dropna().values
-    ctrl_er = effective_rank(ctrl_matrix)
-    ctrl_cs = group_corr_stability(ctrl_valid, CONTROL_COLS)
-    print(f"  control: eff_rank={ctrl_er:.3f}, corr_stability={ctrl_cs:.4f}")
+    ctrl_stab = batch_corr_stability(ctrl_valid, CONTROL_COLS)
+    print(f"  control done ({len(CONTROL_COLS)} features)")
 
-    # --- spurious group ---
-    spur_valid = ctrl_valid[SPURIOUS_COLS].dropna()
-    spur_df = ctrl_valid.loc[spur_valid.index]
-    spur_er = effective_rank(spur_valid.values)
-    spur_cs = group_corr_stability(spur_df, SPURIOUS_COLS)
-    print(f"  spurious: eff_rank={spur_er:.3f}, corr_stability={spur_cs:.4f}")
+    spur_valid = ctrl_valid.dropna(subset=SPURIOUS_COLS)
+    spur_stab = batch_corr_stability(spur_valid, SPURIOUS_COLS)
+    print(f"  spurious done ({len(SPURIOUS_COLS)} features)")
 
-    # --- embeddings group ---
-    embed_matrix = embed_valid[EMBED_COLS].dropna().values
-    embed_er = effective_rank(embed_matrix)
-    embed_cs = group_corr_stability(embed_valid.dropna(subset=EMBED_COLS[:1]), EMBED_COLS)
-    print(f"  embeddings: eff_rank={embed_er:.3f}, corr_stability={embed_cs:.4f}")
+    sent_stab = batch_corr_stability(ctrl_valid, ["sentiment_score"])
+    print("  sentiment done")
 
-    # --- LDA group ---
-    lda_matrix = embed_valid[LDA_COLS].dropna().values
-    lda_er = effective_rank(lda_matrix)
-    lda_cs = group_corr_stability(embed_valid.dropna(subset=LDA_COLS[:1]), LDA_COLS)
-    lda_coherence = topic_coherence_proxy(embed_valid[LDA_COLS])
-    print(f"  lda_topics: eff_rank={lda_er:.3f}, corr_stability={lda_cs:.4f}, coherence={lda_coherence:.4f}")
+    lda_valid = embed_valid.dropna(subset=LDA_COLS[:1])
+    lda_stab = batch_corr_stability(lda_valid, LDA_COLS)
+    print(f"  lda_topics done ({len(LDA_COLS)} features)")
 
-    # --- sentiment (scalar, from ctrl dataset) ---
-    sent_er = 1.0
-    sent_cs = rolling_corr_stability(ctrl_valid, "sentiment_score")
-    print(f"  sentiment: eff_rank={sent_er:.3f}, corr_stability={sent_cs:.4f}")
+    print(f"  Computing embeddings corr_stability ({len(EMBED_COLS)} features)...")
+    embed_notnull = embed_valid.dropna(subset=EMBED_COLS[:1])
+    embed_stab = batch_corr_stability(embed_notnull, EMBED_COLS)
+    print("  embeddings done")
 
-    rows = [
-        {
-            "feature_group": "control",
-            "is_spurious": 0.0,
-            "effective_rank": ctrl_er,
-            "corr_stability": ctrl_cs,
-            "topic_coherence": np.nan,
-        },
-        {
-            "feature_group": "spurious",
-            "is_spurious": 1.0,
-            "effective_rank": spur_er,
-            "corr_stability": spur_cs,
-            "topic_coherence": np.nan,
-        },
-        {
-            "feature_group": "embeddings",
-            "is_spurious": np.nan,
-            "effective_rank": embed_er,
-            "corr_stability": embed_cs,
-            "topic_coherence": np.nan,
-        },
-        {
-            "feature_group": "lda_topics",
-            "is_spurious": np.nan,
-            "effective_rank": lda_er,
-            "corr_stability": lda_cs,
-            "topic_coherence": lda_coherence,
-        },
-        {
-            "feature_group": "sentiment",
-            "is_spurious": np.nan,
-            "effective_rank": sent_er,
-            "corr_stability": sent_cs,
-            "topic_coherence": np.nan,
-        },
-    ]
+    # --- Build one row per individual feature ---
+    rows = []
+    for col in CONTROL_COLS:
+        rows.append(build_feature_rows(col, "control", 0.0, ctrl_stab))
+    for col in SPURIOUS_COLS:
+        rows.append(build_feature_rows(col, "spurious", 1.0, spur_stab))
+    rows.append(build_feature_rows("sentiment_score", "sentiment", np.nan, sent_stab))
+    for col in LDA_COLS:
+        rows.append(build_feature_rows(col, "lda_topics", np.nan, lda_stab))
+    for col in EMBED_COLS:
+        rows.append(build_feature_rows(col, "embeddings", np.nan, embed_stab))
+
     meta_df = pd.DataFrame(rows)
 
     descriptors_path = os.path.join(RESULTS, "metafeature_descriptors.csv")
     meta_df.to_csv(descriptors_path, index=False)
-    print(f"\nSaved {descriptors_path}")
+    print(f"\nSaved {descriptors_path}  ({len(meta_df)} rows)")
 
-    # --- logistic regression ---
-    print("\nTraining logistic regression...")
+    # --- Logistic regression on the 13 labeled rows ---
+    # effective_rank is 1 for all scalars, so only corr_stability is used as input
+    print("\nTraining logistic regression on 13 labeled features...")
     train = meta_df[meta_df["is_spurious"].notna()].copy()
-    X = train[["effective_rank", "corr_stability"]].fillna(0).values
+    print(f"  Training rows: {len(train)}  "
+          f"(control={int((train.is_spurious==0).sum())}, spurious={int((train.is_spurious==1).sum())})")
+
+    X = train[["corr_stability"]].fillna(0).values
     y = train["is_spurious"].astype(int).values
 
     scaler = StandardScaler()
@@ -209,21 +171,20 @@ def main():
         cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
         scores = []
         for ti, vi in cv.split(X_scaled, y):
-            clf = LogisticRegression(solver="liblinear", l1_ratio=1.0, C=1.0)
+            clf = LogisticRegression(C=1.0, l1_ratio=1.0, solver="saga", max_iter=1000)
             clf.fit(X_scaled[ti], y[ti])
             scores.append(clf.score(X_scaled[vi], y[vi]))
         cv_mean = float(np.mean(scores))
         cv_std = float(np.std(scores))
-        print(f"CV accuracy: {cv_mean:.3f} ± {cv_std:.3f}")
+        print(f"  CV accuracy: {cv_mean:.3f} ± {cv_std:.3f}")
     else:
-        print("Skipping CV: insufficient samples per class")
+        print("  Skipping CV: insufficient samples per class")
 
-    clf_final = LogisticRegression(solver="liblinear", l1_ratio=1.0, C=1.0)
+    clf_final = LogisticRegression(C=1.0, l1_ratio=1.0, solver="saga", max_iter=1000)
     clf_final.fit(X_scaled, y)
 
     coef_rows = [
-        {"feature": "effective_rank", "coefficient": float(clf_final.coef_[0][0])},
-        {"feature": "corr_stability", "coefficient": float(clf_final.coef_[0][1])},
+        {"feature": "corr_stability", "coefficient": float(clf_final.coef_[0][0])},
         {"feature": "intercept",      "coefficient": float(clf_final.intercept_[0])},
         {"feature": "cv_accuracy",    "coefficient": cv_mean},
         {"feature": "cv_std",         "coefficient": cv_std},
@@ -233,22 +194,23 @@ def main():
     coef_df.to_csv(coef_path, index=False)
     print(f"Saved {coef_path}")
 
-    # --- apply to text features ---
+    # --- Apply to text features ---
     text_rows = meta_df[meta_df["is_spurious"].isna()].copy()
-    X_text = scaler.transform(text_rows[["effective_rank", "corr_stability"]].fillna(0).values)
+    X_text = scaler.transform(text_rows[["corr_stability"]].fillna(0).values)
     text_rows["predicted_spurious_prob"] = clf_final.predict_proba(X_text)[:, 1]
 
     pred_path = os.path.join(RESULTS, "metafeature_predictions.csv")
-    text_rows[["feature_group", "effective_rank", "corr_stability", "predicted_spurious_prob"]].to_csv(
+    text_rows[["feature", "feature_group", "corr_stability", "predicted_spurious_prob"]].to_csv(
         pred_path, index=False
     )
-    print(f"Saved {pred_path}")
+    print(f"Saved {pred_path}  ({len(text_rows)} rows)")
 
     print("\nDone.")
-    print("\nDescriptors:")
-    print(meta_df.to_string(index=False))
-    print("\nPredictions:")
-    print(text_rows[["feature_group", "predicted_spurious_prob"]].to_string(index=False))
+    print("\nLabeled feature descriptors (13 rows):")
+    print(train[["feature", "feature_group", "is_spurious", "corr_stability"]].to_string(index=False))
+    print("\nText feature predictions (sample):")
+    summary = text_rows.groupby("feature_group")["predicted_spurious_prob"].agg(["mean", "std", "count"])
+    print(summary.to_string())
 
 
 if __name__ == "__main__":
