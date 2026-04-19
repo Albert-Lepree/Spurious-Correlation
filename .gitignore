@@ -1,2 +1,20 @@
-/.env
-__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Environments
+.env
+.venv/
+vllm-env/
+
+# Data files (large, generated)
+datasets/
+*.parquet
+*.csv
+
+# IDE
+.idea/
+.vscode/

@@ -69,21 +69,61 @@ def run_embeddings():
     extractEmbeddings.main()
 
 
+STAGES = [
+    "ingest",
+    "spurious-sentiment",
+    "sentiment",
+    "sentiment-score",
+    "compile",
+    "lda",
+    "embeddings",
+]
+
+STAGE_FNS = {
+    "ingest": run_ingestion,
+    "spurious-sentiment": run_spurious_sentiment_score,
+    "sentiment": run_sentiment,
+    "sentiment-score": run_sentiment_score,
+    "compile": run_compile_master,
+    "lda": run_lda_topics,
+    "embeddings": run_embeddings,
+}
+
+
 if __name__ == "__main__":
-    # run_ingestion()
-    # run_sentiment()
-    # run_sentiment_score()
-    # run_spurious_sentiment_score()
-    # run_compile_master()
-    # run_compile_master()
-    # pd.set_option('display.max_columns', None)
-    # df = pd.read_parquet('./datasets/master_with_control.parquet')
-    # print(df)
-    # df = pd.read_parquet('./datasets/master_base.parquet')
-    # print(df)
-    # run_lda_topics()
-    # df = pd.read_parquet('./datasets/master_with_lda.parquet')
-    # print(df)
-    # run_embeddings()
-    df = pd.read_parquet('./datasets/master_with_embeddings.parquet')
-    print(df)
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Spurious-Correlation data pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="\n".join([
+            "Stages (must be run in this order):",
+            "  ingest              Pull news from Databricks → datasets/real_news.csv",
+            "  spurious-sentiment  Score spurious headlines  → datasets/spurious_news_scored.csv",
+            "  sentiment           Classify real news        → PostgreSQL sentiment_results",
+            "  sentiment-score     Score real news 0-100     → PostgreSQL sentiment_score_results",
+            "  compile             Join all sources          → datasets/master_base.parquet + master_with_control.parquet",
+            "  lda                 Topic modelling           → datasets/master_with_lda.parquet",
+            "  embeddings          Encode text               → datasets/master_with_embeddings.parquet",
+        ]),
+    )
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--stage",
+        choices=STAGES,
+        metavar="STAGE",
+        help=f"Run a single stage: {{{', '.join(STAGES)}}}",
+    )
+    group.add_argument(
+        "--all",
+        action="store_true",
+        help="Run all stages in order",
+    )
+    args = parser.parse_args()
+
+    if args.all:
+        for stage in STAGES:
+            print(f"\n=== {stage} ===")
+            STAGE_FNS[stage]()
+    else:
+        STAGE_FNS[args.stage]()
