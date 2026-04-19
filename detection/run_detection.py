@@ -26,6 +26,9 @@ BLOCK_SIZE = 20
 N_JOBS = 16
 TRAIN_WINDOW = 252
 TEST_WINDOW = 21
+MIN_FOLDS = 5
+
+BOOTSTRAP_EXCLUDE = ["future_return_t2"]
 
 
 def get_db():
@@ -105,8 +108,8 @@ def run_bonferroni_fdr(df, conn):
     reject_fdr, _, _, _ = multipletests(p_values, alpha=alpha, method="fdr_bh")
 
     for i, row in enumerate(rows):
-        row["bonferroni_rejected"] = bool(row["p_value"] < bonferroni_threshold)
-        row["fdr_rejected"] = bool(reject_fdr[i])
+        row["bonferroni_rejected"] = bool(row["p_value"] >= bonferroni_threshold)
+        row["fdr_rejected"] = bool(not reject_fdr[i])
 
     cursor.executemany("""
         INSERT INTO bonferroni_fdr_results
@@ -127,14 +130,15 @@ def run_bootstrap(df, conn):
     boot_rows = []
 
     for group_name, features in [("control", CONTROL), ("spurious", SPURIOUS), ("text", TEXT)]:
-        print(f"  Bootstrap: {group_name} ({len(features)} features)...")
-        valid = df[features + [TARGET]].dropna()
+        features_to_run = [f for f in features if f not in BOOTSTRAP_EXCLUDE]
+        print(f"  Bootstrap: {group_name} ({len(features_to_run)} features)...")
+        valid = df[features_to_run + [TARGET]].dropna()
         target_vals = valid[TARGET].values
-        feature_matrix = valid[features].values
+        feature_matrix = valid[features_to_run].values
 
         insample = np.array([
             sharpe(strategy_returns(pd.Series(feature_matrix[:, i]), pd.Series(target_vals)))
-            for i in range(len(features))
+            for i in range(len(features_to_run))
         ])
 
         boot_matrix = np.array(
@@ -146,7 +150,7 @@ def run_bootstrap(df, conn):
 
         critical_values = np.percentile(boot_matrix, 95, axis=0)
 
-        for i, feat in enumerate(features):
+        for i, feat in enumerate(features_to_run):
             boot_rows.append({
                 "feature": feat,
                 "feature_group": group_name,
@@ -154,6 +158,16 @@ def run_bootstrap(df, conn):
                 "critical_value_95": float(critical_values[i]),
                 "bootstrap_rejected": bool(insample[i] > critical_values[i]),
             })
+
+        for feat in features:
+            if feat in BOOTSTRAP_EXCLUDE:
+                boot_rows.append({
+                    "feature": feat,
+                    "feature_group": group_name,
+                    "insample_sharpe": None,
+                    "critical_value_95": None,
+                    "bootstrap_rejected": True,  # look-ahead bias: rejected by definition
+                })
 
     cursor.executemany("""
         INSERT INTO bootstrap_results
@@ -198,7 +212,8 @@ def run_walkforward(df, conn):
             test_ret = test_signal * test_valid[TARGET].values
             s_test = sharpe(pd.Series(test_ret))
 
-            gen_ratios[feat].append(s_test / s_train)
+            ratio = float(np.clip(s_test / s_train, -10, 10))
+            gen_ratios[feat].append(ratio)
             n_folds[feat] += 1
 
         i += TEST_WINDOW
@@ -207,7 +222,7 @@ def run_walkforward(df, conn):
 
     wf_rows = []
     for feat in ALL_FEATURES:
-        if not gen_ratios[feat]:
+        if len(gen_ratios[feat]) < MIN_FOLDS:
             continue
         mean_ratio = float(np.mean(gen_ratios[feat]))
         wf_rows.append({
