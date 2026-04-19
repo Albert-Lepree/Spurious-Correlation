@@ -69,6 +69,12 @@ def run_embeddings():
     extractEmbeddings.main()
 
 
+def run_compile_final():
+    """Merge control + embeddings into master_final.parquet."""
+    from compileMasterData import build_master_final
+    build_master_final.main()
+
+
 def run_metafeatures():
     """Compute meta-feature descriptors and predict spuriousness of text features."""
     from metafeatures import run_metafeatures
@@ -83,6 +89,7 @@ STAGES = [
     "compile",
     "lda",
     "embeddings",
+    "compile-final",
     "metafeatures",
 ]
 
@@ -94,6 +101,7 @@ STAGE_FNS = {
     "compile": run_compile_master,
     "lda": run_lda_topics,
     "embeddings": run_embeddings,
+    "compile-final": run_compile_final,
     "metafeatures": run_metafeatures,
 }
 
@@ -113,6 +121,7 @@ if __name__ == "__main__":
             "  compile             Join all sources          → datasets/master_base.parquet + master_with_control.parquet",
             "  lda                 Topic modelling           → datasets/master_with_lda.parquet",
             "  embeddings          Encode text               → datasets/master_with_embeddings.parquet",
+            "  compile-final       Merge all features        → datasets/master_final.parquet",
             "  metafeatures        Meta-feature analysis     → results/metafeature_descriptors.csv + coefficients + predictions",
         ]),
     )
