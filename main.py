@@ -87,6 +87,12 @@ def run_detection():
     run_detection.main()
 
 
+def run_correct_sentiment():
+    """Re-score articles with sentinel sentiment_score values (0 or 50)."""
+    from sentimentAnalysis import correct_sentiment_score
+    correct_sentiment_score.main()
+
+
 STAGES = [
     "ingest",
     "spurious-sentiment",
@@ -111,6 +117,7 @@ STAGE_FNS = {
     "compile-final": run_compile_final,
     "metafeatures": run_metafeatures,
     "detection": run_detection,
+    "correct-sentiment": run_correct_sentiment,
 }
 
 
@@ -132,14 +139,17 @@ if __name__ == "__main__":
             "  compile-final       Merge all features        → datasets/master_final.parquet",
             "  metafeatures        Meta-feature analysis     → results/metafeature_descriptors.csv + coefficients + predictions",
             "  detection           Spurious detection        → DB tables + results/bonferroni_fdr_results.csv + bootstrap_results.csv + walkforward_results.csv + FINAL_SUMMARY.csv",
+            "",
+            "Standalone stages (not part of --all):",
+            "  correct-sentiment   Fix sentinel scores (0/50) → PostgreSQL sentiment_score_results  [standalone]",
         ]),
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--stage",
-        choices=STAGES,
+        choices=list(STAGE_FNS.keys()),
         metavar="STAGE",
-        help=f"Run a single stage: {{{', '.join(STAGES)}}}",
+        help=f"Run a single stage: {{{', '.join(STAGE_FNS.keys())}}}",
     )
     group.add_argument(
         "--all",
