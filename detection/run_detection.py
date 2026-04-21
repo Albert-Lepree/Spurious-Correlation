@@ -101,18 +101,18 @@ def run_bonferroni_fdr(df, conn):
         valid = df[[feat, TARGET]].dropna()
         r, p = stats.pearsonr(valid[feat], valid[TARGET])
         rows.append({
-            "feature": feat,
-            "feature_group": assign_group(feat),
-            "correlation": r,
-            "p_value": p,
+            'feature': feat,
+            'feature_group': assign_group(feat),
+            'correlation': float(r),
+            'p_value': float(p),
         })
 
     p_values = [r["p_value"] for r in rows]
     reject_fdr, _, _, _ = multipletests(p_values, alpha=alpha, method="fdr_bh")
 
     for i, row in enumerate(rows):
-        row["bonferroni_rejected"] = bool(row["p_value"] >= bonferroni_threshold)
-        row["fdr_rejected"] = bool(not reject_fdr[i])
+        row['bonferroni_rejected'] = bool(row['p_value'] >= bonferroni_threshold)
+        row['fdr_rejected'] = bool(not reject_fdr[i])
 
     cursor.executemany("""
         INSERT INTO bonferroni_fdr_results
